@@ -1,42 +1,25 @@
-import pickle
 from snake_env import SnakeEnv
 from agent import Agent
 
+MODEL = "elite_snake.pth"
 
-MODEL_PATH = "q_table.pkl"
 
-
-def load_agent():
+def play():
+    env = SnakeEnv(render=True, speed=15)
     agent = Agent()
-    agent.epsilon = 0.0  # pure exploitation
-
-    try:
-        with open(MODEL_PATH, "rb") as f:
-            agent.q_table = pickle.load(f)
-        print("Model loaded.")
-    except FileNotFoundError:
-        print("No trained model found. Run train.py first.")
-        exit()
-
-    return agent
-
-
-def main():
-    env = SnakeEnv()
-    agent = load_agent()
+    agent.load(MODEL)
+    agent.epsilon = 0.0
 
     state = env.reset()
-    done = False
 
     while True:
-        action = agent.get_action(state)
-        next_state, reward, done = env.step(action)
-        state = next_state
+        action = agent.act(state)
+        state, _, done = env.step(action)
 
         if done:
-            print("Game Over. Score:", env.score)
+            print("Score:", env.score)
             state = env.reset()
 
 
 if __name__ == "__main__":
-    main()
+    play()
