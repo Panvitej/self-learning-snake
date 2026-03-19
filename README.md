@@ -1,183 +1,295 @@
-# Self-Learning Snake (Q-Learning)
+# Self-Learning Snake: Deep Reinforcement Learning System
 
-A reinforcement learning implementation of the classic Snake game using tabular Q-learning.  
-The agent learns autonomously through reward-driven interaction with the environment, improving from random exploration to goal-directed behavior.
+## 1. Problem Definition
 
----
+The objective is to train an autonomous agent to play Snake optimally.
 
-## Overview
+Constraints:
+- No prior knowledge of the environment
+- No hardcoded rules or heuristics
+- Learning must emerge purely from interaction
 
-This project includes:
-
-- Custom Snake game environment (Pygame)
-- Discrete state representation
-- Tabular Q-learning agent
-- Exploration-to-exploitation training schedule
-- Model saving and playback mode
-
-The snake begins with no prior knowledge. Through repeated episodes, it learns to avoid collisions and maximize reward by collecting food.
+Core challenge:
+- Sequential decision-making under uncertainty
+- Sparse rewards (food vs death)
+- Long-term survival vs short-term gain
 
 ---
 
-## State Representation
+## 2. System Overview
 
-The agent observes:
+The system consists of two tightly coupled components:
 
-- Danger straight  
-- Danger right  
-- Danger left  
-- Food location (left/right/up/down relative to head)  
+### Environment (snake_env.py)
+- Deterministic grid-based simulation
+- Provides state, reward, and termination signal
+- Enforces physics and constraints
 
-This compact state encoding reduces the environment to a manageable discrete space.
+### Agent (agent.py)
+- Learns a policy π(s) → a
+- Approximates Q-values using a neural network
+- Improves through replayed experience
 
----
+### Training Loop (train.py)
+- Drives interaction between agent and environment
+- Handles learning updates and exploration schedule
 
-## Action Space
-
-The agent chooses one of three actions:
-
-- Move straight  
-- Turn right  
-- Turn left  
-
-Actions are relative to the current direction.
-
----
-
-## Reward Function
-
-- +10 → Food collected  
-- -10 → Collision (game over)  
-- 0 → Normal movement  
-
-This reward structure encourages survival and goal-seeking behavior.
+### Inference (play.py)
+- Executes trained policy with ε = 0
+- No learning, only exploitation
 
 ---
 
-## Learning Algorithm
+## 3. State Representation
 
-Q-learning update rule:
+The environment is reduced to a **7-dimensional binary feature vector**:
 
-Q(s, a) ← Q(s, a) + α [ r + γ max Q(s', a') − Q(s, a) ]
+| Feature | Meaning |
+|--------|--------|
+| Danger straight | Collision risk ahead |
+| Danger right | Collision risk if turning right |
+| Danger left | Collision risk if turning left |
+| Food left | Food is left of head |
+| Food right | Food is right of head |
+| Food up | Food is above |
+| Food down | Food is below |
 
-Where:
+Design rationale:
+- Minimal representation → faster convergence
+- Removes irrelevant spatial complexity
+- Encodes only decision-critical information
 
-- α = learning rate  
-- γ = discount factor  
-- ε = exploration rate  
-
-Exploration starts high and decays gradually, shifting toward exploitation of the learned policy.
-
----
-
-## Project Structure
-snake-rl/
-│
-├── agent.py
-├── snake_env.py
-├── train.py
-├── play.py
-├── models/
-│ └── q_table.pkl
-└── requirements.txt
-
-## Installation
-
-
-pip install -r requirements.txt
-
-Dependencies:
-
-- pygame
-- numpy
+Tradeoff:
+- No full spatial awareness (limits optimality ceiling)
 
 ---
 
-## Training
+## 4. Action Space
 
-Run:
+Discrete action space:
 
+| Action | Description |
+|-------|------------|
+| 0 | Move straight |
+| 1 | Turn right |
+| 2 | Turn left |
 
-python train.py
-
-During training:
-
-- The agent explores randomly at first.
-- Q-values are updated after each action.
-- Exploration rate decays gradually.
-- Performance improves across episodes.
-
-At completion, the learned Q-table is saved to:
-
-
-models/q_table.pkl
-
+Important:
+- Actions are **relative**, not absolute
+- Reduces action ambiguity and state complexity
 
 ---
 
-## Play (Exploitation Mode)
+## 5. Reward Design
 
-After training:
+| Event | Reward |
+|------|--------|
+| Eat food | +10 |
+| Collision | -10 |
+| Each step | -0.1 |
 
+Design logic:
+- Positive reinforcement for goal completion
+- Strong penalty for failure
+- Small negative step cost prevents idle looping
 
-python play.py
-
-
-The agent runs in pure exploitation mode (ε = 0) and follows the learned policy.
+Impact:
+- Encourages shortest-path behavior
+- Reduces wandering
+- Improves convergence speed
 
 ---
 
-## Learning Behavior
+## 6. Learning Architecture
 
-Early episodes:
-- Frequent collisions
+The agent uses an advanced variant of Deep Q-Learning:
+
+### 6.1 Q-Function Approximation
+
+Instead of a table:
+- Q(s, a) is approximated using a neural network
+
+Input: state (7 features)  
+Output: Q-values for 3 actions  
+
+---
+
+### 6.2 Double DQN
+
+Problem addressed:
+- Standard DQN overestimates Q-values
+
+Solution:
+- Separate networks for:
+  - Action selection (online network)
+  - Action evaluation (target network)
+
+Effect:
+- More stable and realistic value estimates
+
+---
+
+### 6.3 Dueling Network Architecture
+
+Network splits into:
+
+- Value stream: V(s)
+- Advantage stream: A(s, a)
+
+Final Q-value:
+Q(s, a) = V(s) + A(s, a) − mean(A)
+
+Benefit:
+- Learns state importance independent of action
+- Faster policy stabilization
+
+---
+
+### 6.4 Prioritized Experience Replay (PER)
+
+Standard replay:
+- Uniform random sampling
+
+PER:
+- Samples based on TD-error magnitude
+
+Effect:
+- Important transitions are replayed more often
+- Faster correction of mistakes
+
+---
+
+### 6.5 N-Step Learning (n = 3)
+
+Instead of single-step reward:
+- Accumulates reward over multiple steps
+
+R = r₀ + γr₁ + γ²r₂
+
+Benefit:
+- Better long-term credit assignment
+- Improves learning in delayed reward scenarios
+
+---
+
+## 7. Training Process
+
+Each episode:
+
+1. Environment reset
+2. Agent observes initial state
+3. Loop until termination:
+   - Select action (ε-greedy)
+   - Execute action
+   - Receive reward and next state
+   - Store transition
+   - Perform training step
+4. Decay exploration rate
+
+---
+
+## 8. Exploration Strategy
+
+ε-greedy policy:
+
+- Initially:
+  - ε = 1.0 → full exploration
+- Gradually:
+  - ε decays toward 0.02
+- Finally:
+  - Mostly exploitation
+
+Purpose:
+- Avoid premature convergence
+- Ensure sufficient state coverage
+
+---
+
+## 9. Stability Mechanisms
+
+To prevent divergence:
+
+- Target network (soft updates)
+- Gradient clipping
+- Replay buffer (decorrelated data)
+- Controlled learning rate
+
+These are critical for deep RL stability.
+
+---
+
+## 10. Model Persistence
+
+- Model saved using PyTorch
+- File: `snake_model.pth`
+
+Enables:
+- Reuse of trained policy
+- Deployment without retraining
+
+---
+
+## 11. Performance Evolution
+
+### Early Training
 - Random movement
+- High collision rate
 - Low scores
 
-Mid training:
-- Improved wall avoidance
-- More consistent food targeting
+### Mid Training
+- Basic obstacle avoidance
+- Occasional food targeting
 
-Later episodes:
-- Structured movement patterns
-- Higher average survival time
-- More stable policy execution
-
----
-
-## Design Decisions
-
-- Tabular Q-learning for interpretability
-- Discrete state space for stability
-- Modular separation between environment and agent
-- Model persistence using pickle
+### Late Training
+- Structured navigation
+- Efficient food acquisition
+- Consistent scoring patterns
 
 ---
 
-## Limitations
+## 12. Design Tradeoffs
 
-- Tabular approach does not scale to large state spaces
-- No neural network generalization (not a DQN)
-- Limited state encoding (no full board awareness)
-
----
-
-## Future Improvements
-
-- Deep Q-Network (DQN)
-- Experience replay
-- Headless training mode
-- Performance visualization
-- Hyperparameter tuning experiments
+| Decision | Benefit | Limitation |
+|--------|--------|-----------|
+| Compact state | Fast learning | Limited awareness |
+| DQN | Generalization | Requires tuning |
+| PER | Faster convergence | Added complexity |
+| N-step | Better rewards | More computation |
 
 ---
 
-## Summary
+## 13. System Limitations
 
-This project demonstrates:
+- No full-grid representation
+- Cannot plan long trajectories explicitly
+- Performance bounded by state abstraction
 
-- Reinforcement learning fundamentals
-- Environment-agent abstraction
-- Reward-driven optimization
-- Exploration vs exploitation tradeoff
-- Model persistence and evaluation
+---
+
+## 14. Extensions (Next-Level Systems)
+
+To push beyond this system:
+
+- CNN-based input (full grid vision)
+- Parallel environments (multi-agent training)
+- Distributed RL training
+- Policy gradient methods (PPO, A3C)
+
+---
+
+## 15. Summary
+
+This system demonstrates:
+
+- End-to-end reinforcement learning pipeline
+- Transition from tabular → deep RL
+- Practical implementation of:
+  - Double DQN
+  - Dueling networks
+  - Prioritized replay
+  - N-step returns
+
+Outcome:
+A self-learning agent that develops structured, goal-oriented behavior purely from interaction.
+
+No hardcoded strategy. Only learning.
