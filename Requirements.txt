@@ -1,5 +1,10 @@
 pygame>=2.0.0
 numpy>=1.20.0
+torch==2.2.0
+matplotlib==3.8.2
 
 Install with:
 pip install -r requirements.txt
+
+tqdm==4.66.1        # progress bars
+pandas==2.1.4      # advanced analysis (optional)
