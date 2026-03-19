@@ -2,134 +2,129 @@ import pygame
 import random
 import numpy as np
 
-BLOCK = 20
-WIDTH = 400
-HEIGHT = 400
-SPEED = 50
-
 
 class SnakeEnv:
+    BLOCK = 20
+    WIDTH = 400
+    HEIGHT = 400
+    DIRECTIONS = [(1, 0), (0, 1), (-1, 0), (0, -1)]
 
-    def __init__(self):
-        pygame.init()
-        self.display = pygame.display.set_mode((WIDTH, HEIGHT))
-        pygame.display.set_caption("Snake RL")
-        self.clock = pygame.time.Clock()
+    def __init__(self, render=True, speed=50):
+        self.render = render
+        self.speed = speed
+
+        if render:
+            pygame.init()
+            self.display = pygame.display.set_mode((self.WIDTH, self.HEIGHT))
+            pygame.display.set_caption("Snake RL")
+            self.clock = pygame.time.Clock()
+
         self.reset()
 
     def reset(self):
         self.direction = (1, 0)
-        self.head = [WIDTH // 2, HEIGHT // 2]
+        self.head = [self.WIDTH // 2, self.HEIGHT // 2]
         self.snake = [self.head[:]]
-        self.spawn_food()
         self.score = 0
-        self.frame_iteration = 0
-        return self.get_state()
+        self.frame = 0
 
-    def spawn_food(self):
-        x = random.randint(0, (WIDTH - BLOCK) // BLOCK) * BLOCK
-        y = random.randint(0, (HEIGHT - BLOCK) // BLOCK) * BLOCK
-        self.food = [x, y]
+        self._spawn_food()
+        return self._state()
+
+    def _spawn_food(self):
+        while True:
+            x = random.randrange(0, self.WIDTH, self.BLOCK)
+            y = random.randrange(0, self.HEIGHT, self.BLOCK)
+            if [x, y] not in self.snake:
+                self.food = [x, y]
+                break
 
     def step(self, action):
-        self.frame_iteration += 1
+        self.frame += 1
         self._move(action)
         self.snake.insert(0, self.head[:])
 
-        reward = 0
+        reward = -0.1  # small penalty (encourages efficiency)
         done = False
 
-        if self.is_collision():
-            reward = -10
-            done = True
-            return self.get_state(), reward, done
+        if self._collision() or self.frame > 100 * len(self.snake):
+            return self._state(), -10, True
 
         if self.head == self.food:
-            reward = 10
             self.score += 1
-            self.spawn_food()
+            reward = 10
+            self._spawn_food()
         else:
             self.snake.pop()
 
-        self._update_ui()
-        self.clock.tick(SPEED)
+        if self.render:
+            self._draw()
 
-        return self.get_state(), reward, done
+        return self._state(), reward, done
 
-    def is_collision(self):
-        if (
-            self.head[0] < 0 or self.head[0] >= WIDTH or
-            self.head[1] < 0 or self.head[1] >= HEIGHT or
-            self.head in self.snake[1:]
-        ):
-            return True
-        return False
+    def _collision(self, pt=None):
+        if pt is None:
+            pt = self.head
+
+        return (
+            pt[0] < 0 or pt[0] >= self.WIDTH or
+            pt[1] < 0 or pt[1] >= self.HEIGHT or
+            pt in self.snake[1:]
+        )
 
     def _move(self, action):
-        # action: [straight, right, left]
-        directions = [(1,0), (0,1), (-1,0), (0,-1)]
-        idx = directions.index(self.direction)
+        idx = self.DIRECTIONS.index(self.direction)
 
-        if np.array_equal(action, [1,0,0]):
-            new_dir = directions[idx]
-        elif np.array_equal(action, [0,1,0]):
-            new_dir = directions[(idx + 1) % 4]
+        if action == 0:
+            new_dir = self.DIRECTIONS[idx]
+        elif action == 1:
+            new_dir = self.DIRECTIONS[(idx + 1) % 4]
         else:
-            new_dir = directions[(idx - 1) % 4]
+            new_dir = self.DIRECTIONS[(idx - 1) % 4]
 
         self.direction = new_dir
-        self.head[0] += self.direction[0] * BLOCK
-        self.head[1] += self.direction[1] * BLOCK
+        self.head[0] += new_dir[0] * self.BLOCK
+        self.head[1] += new_dir[1] * self.BLOCK
 
-    def get_state(self):
+    def _state(self):
         head = self.head
 
-        point_l = [head[0] - BLOCK, head[1]]
-        point_r = [head[0] + BLOCK, head[1]]
-        point_u = [head[0], head[1] - BLOCK]
-        point_d = [head[0], head[1] + BLOCK]
+        def p(x, y): return [head[0] + x, head[1] + y]
 
         dir_l = self.direction == (-1, 0)
         dir_r = self.direction == (1, 0)
         dir_u = self.direction == (0, -1)
         dir_d = self.direction == (0, 1)
 
-        state = [
-            (dir_r and self._collision(point_r)) or
-            (dir_l and self._collision(point_l)) or
-            (dir_u and self._collision(point_u)) or
-            (dir_d and self._collision(point_d)),
+        return np.array([
+            (dir_r and self._collision(p(20, 0))) or
+            (dir_l and self._collision(p(-20, 0))) or
+            (dir_u and self._collision(p(0, -20))) or
+            (dir_d and self._collision(p(0, 20))),
 
-            (dir_u and self._collision(point_r)) or
-            (dir_d and self._collision(point_l)) or
-            (dir_l and self._collision(point_u)) or
-            (dir_r and self._collision(point_d)),
+            (dir_u and self._collision(p(20, 0))) or
+            (dir_d and self._collision(p(-20, 0))) or
+            (dir_l and self._collision(p(0, -20))) or
+            (dir_r and self._collision(p(0, 20))),
 
-            (dir_d and self._collision(point_r)) or
-            (dir_u and self._collision(point_l)) or
-            (dir_r and self._collision(point_u)) or
-            (dir_l and self._collision(point_d)),
+            (dir_d and self._collision(p(20, 0))) or
+            (dir_u and self._collision(p(-20, 0))) or
+            (dir_r and self._collision(p(0, -20))) or
+            (dir_l and self._collision(p(0, 20))),
 
             self.food[0] < head[0],
             self.food[0] > head[0],
             self.food[1] < head[1],
             self.food[1] > head[1],
-        ]
+        ], dtype=int)
 
-        return np.array(state, dtype=int)
+    def _draw(self):
+        self.display.fill((0, 0, 0))
 
-    def _collision(self, point):
-        if (
-            point[0] < 0 or point[0] >= WIDTH or
-            point[1] < 0 or point[1] >= HEIGHT or
-            point in self.snake
-        ):
-            return True
-        return False
+        for s in self.snake:
+            pygame.draw.rect(self.display, (0, 255, 0), (*s, self.BLOCK, self.BLOCK))
 
-    def _update_ui(self):
-        self.display.fill((0,0,0))
-        for pt in self.snake:
-            pygame.draw.rect(self.display, (0,255,0), pygame.Rect(pt[0], pt[1], BLOCK, BLOCK))
-        pygame.draw.rect(self.display, (255,0,0), pygame.Rect(self.food[0], self.food[1], BLOCK, BLOCK))
+        pygame.draw.rect(self.display, (255, 0, 0), (*self.food, self.BLOCK, self.BLOCK))
+
         pygame.display.flip()
+        self.clock.tick(self.speed)
